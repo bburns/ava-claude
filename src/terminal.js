@@ -8,6 +8,22 @@ export function startTerminal(ava) {
 
   console.log('Ava - powered by Claude (type exit to quit)')
 
+  ava.on('userMessage', ({ text, source }) => {
+    if (source === 'terminal') return
+    process.stdout.clearLine(0)
+    process.stdout.cursorTo(0)
+    console.log(`[${source}] you: ${text}`)
+    rl.prompt(true)
+  })
+
+  ava.on('assistantMessage', ({ text, source }) => {
+    if (source === 'terminal') return
+    process.stdout.clearLine(0)
+    process.stdout.cursorTo(0)
+    console.log(`[${source}] ava: ${text}`)
+    rl.prompt(true)
+  })
+
   function prompt() {
     rl.question('you: ', async (input) => {
       const trimmed = input.trim()
@@ -17,7 +33,7 @@ export function startTerminal(ava) {
         return
       }
 
-      const stream = ava.chatStream(trimmed)
+      const stream = ava.chatStream(trimmed, 'terminal')
 
       process.stdout.write('ava: ')
       stream.on('text', (text) => process.stdout.write(text))
