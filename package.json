@@ -1,0 +1,14 @@
+{
+  "name": "ava-claude",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Ava - a personal assistant powered by Claude",
+  "main": "index.js",
+  "scripts": {
+    "start": "node --no-deprecation index.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "dotenv": "^17.2.4"
+  }
+}
