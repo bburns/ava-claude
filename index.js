@@ -1,43 +1,12 @@
 import 'dotenv/config'
-import { createInterface } from 'node:readline'
-import Anthropic from '@anthropic-ai/sdk'
+import Ava from './src/core.js'
+import { startTerminal } from './src/terminal.js'
 
-const client = new Anthropic()
-const messages = []
+const ava = new Ava()
 
-const rl = createInterface({
-  input: process.stdin,
-  output: process.stdout,
-})
-
-function prompt() {
-  rl.question('you: ', async (input) => {
-    const trimmed = input.trim()
-    if (!trimmed || ['exit', 'quit', 'bye'].includes(trimmed.toLowerCase())) {
-      console.log('Goodbye!')
-      rl.close()
-      return
-    }
-
-    messages.push({ role: 'user', content: trimmed })
-
-    const stream = client.messages.stream({
-      model: 'claude-sonnet-4-5-20250929',
-      max_tokens: 1024,
-      system: 'You are Ava, a helpful personal assistant. Be concise and friendly.',
-      messages,
-    })
-
-    process.stdout.write('ava: ')
-    stream.on('text', (text) => process.stdout.write(text))
-
-    const message = await stream.finalMessage()
-    console.log()
-
-    messages.push({ role: 'assistant', content: message.content[0].text })
-    prompt()
-  })
+if (process.env.TELEGRAM_BOT_TOKEN) {
+  const { startTelegram } = await import('./src/telegram.js')
+  startTelegram(ava)
 }
 
-console.log('Ava - powered by Claude (type exit to quit)')
-prompt()
+startTerminal(ava)
