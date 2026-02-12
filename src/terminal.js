@@ -33,6 +33,13 @@ export function startTerminal(ava) {
         return
       }
 
+      const commandResponse = ava.handleCommand(trimmed)
+      if (commandResponse) {
+        console.log(`ava: ${commandResponse}`)
+        prompt()
+        return
+      }
+
       const stream = ava.chatStream(trimmed, 'terminal')
 
       process.stdout.write('ava: ')

@@ -46,6 +46,27 @@ src/telegram.js     Telegram adapter — grammy bot, responds to text messages
 
 All adapters share a single `Ava` instance with one conversation history. A conversation started in terminal continues on Telegram and vice versa.
 
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `/code` | Switch to Claude Code mode (uses default cwd) |
+| `/code <path>` | Switch to Claude Code mode with a specific working directory |
+| `/chat` | Switch back to normal chat mode |
+| `/mode` | Show current mode and working directory |
+
+Commands work from both terminal and Telegram.
+
+### Code mode
+
+In code mode, messages are sent to Claude Code (`claude -p`) running on your local machine, with full file and tool access. This lets you do coding tasks from Telegram (or terminal) — reading files, running commands, editing code, etc.
+
+Allowed working directories:
+- `C:/Users/bburns/Dropbox/@Projects/@Current` (default)
+- `C:/Users/bburns/Workspace`
+
+On Telegram, code mode is restricted to the authorized `TELEGRAM_CHAT_ID`.
+
 ### Cross-adapter echo
 
 Messages from other adapters are echoed in real time. On terminal, Telegram messages appear as:
