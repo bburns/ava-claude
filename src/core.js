@@ -6,6 +6,7 @@ const SYSTEM_PROMPT = 'You are Ava, a helpful personal assistant. Be concise and
 const MODEL = 'claude-sonnet-4-5-20250929'
 const MAX_TOKENS = 1024
 
+const CLAUDE_PATH = process.env.CLAUDE_PATH || 'claude'
 const DEFAULT_CWD = 'C:/Users/bburns/Dropbox/@Projects/@Current'
 const ALLOWED_DIRS = [
   'C:/Users/bburns/Dropbox/@Projects/@Current',
@@ -97,24 +98,33 @@ export default class Ava extends EventEmitter {
     return stream
   }
 
+  _spawnClaude(userMessage) {
+    // return spawn(CLAUDE_PATH, ['-p', userMessage], { cwd: this.cwd })
+    // const process = spawn(CLAUDE_PATH, ['-p', userMessage], { cwd: this.cwd })
+    const process = spawn(CLAUDE_PATH, ['-p', userMessage], { shell:true, cwd: this.cwd })
+    process.stdout.on('data', (data) => print(data))
+    process.stderr.on('data', (data) => print(data))
+    process.on('close', (code) => print(`child process exited with code ${code}`))
+    return process
+  }
+
   _codeChat(userMessage, source) {
     this.emit('userMessage', { text: userMessage, source })
 
-    return new Promise((resolve, reject) => {
-      const proc = spawn('claude', ['-p', userMessage], {
-        cwd: this.cwd,
-        shell: true,
-      })
+    return new Promise((resolve) => {
+      const proc = this._spawnClaude(userMessage)
 
-      let output = ''
-      proc.stdout.on('data', (chunk) => { output += chunk.toString() })
+      let stdout = ''
+      let stderr = ''
+      proc.stdout.on('data', (chunk) => { stdout += chunk.toString() })
+      proc.stderr.on('data', (chunk) => { stderr += chunk.toString() })
       proc.on('error', (err) => {
         const text = `Error: ${err.message}`
         this.emit('assistantMessage', { text, source })
         resolve(text)
       })
       proc.on('close', (code) => {
-        const text = output.trim() || `(claude exited with code ${code})`
+        const text = stdout.trim() || stderr.trim() || `(claude exited with code ${code})`
         this.emit('assistantMessage', { text, source })
         resolve(text)
       })
@@ -124,13 +134,11 @@ export default class Ava extends EventEmitter {
   _codeChatStream(userMessage, source) {
     this.emit('userMessage', { text: userMessage, source })
 
-    const proc = spawn('claude', ['-p', userMessage], {
-      cwd: this.cwd,
-      shell: true,
-    })
+    const proc = this._spawnClaude(userMessage)
 
     const emitter = new EventEmitter()
     let fullText = ''
+    let stderr = ''
 
     proc.stdout.on('data', (chunk) => {
       const text = chunk.toString()
@@ -138,18 +146,21 @@ export default class Ava extends EventEmitter {
       emitter.emit('text', text)
     })
 
+    proc.stderr.on('data', (chunk) => { stderr += chunk.toString() })
+
     proc.on('error', (err) => {
       emitter.emit('text', `Error: ${err.message}`)
     })
 
-    emitter.finalMessage = () =>
-      new Promise((resolve) => {
-        proc.on('close', () => {
-          const text = fullText.trim()
-          this.emit('assistantMessage', { text, source })
-          resolve({ content: [{ text }] })
-        })
+    const done = new Promise((resolve) => {
+      proc.on('close', (code) => {
+        const text = fullText.trim() || stderr.trim() || `(claude exited with code ${code})`
+        this.emit('assistantMessage', { text, source })
+        resolve({ content: [{ text }] })
       })
+    })
+
+    emitter.finalMessage = () => done
 
     return emitter
   }
