@@ -1,12 +1,12 @@
+
+globalThis.print = console.log
 import { EventEmitter } from 'node:events'
-import { spawn } from 'node:child_process'
 import Anthropic from '@anthropic-ai/sdk'
+import { query as claudeQuery } from '@anthropic-ai/claude-agent-sdk'
 
 const SYSTEM_PROMPT = 'You are Ava, a helpful personal assistant. Be concise and friendly.'
 const MODEL = 'claude-sonnet-4-5-20250929'
 const MAX_TOKENS = 1024
-
-const CLAUDE_PATH = process.env.CLAUDE_PATH || 'claude'
 const DEFAULT_CWD = 'C:/Users/bburns/Dropbox/@Projects/@Current'
 const ALLOWED_DIRS = [
   'C:/Users/bburns/Dropbox/@Projects/@Current',
@@ -98,70 +98,72 @@ export default class Ava extends EventEmitter {
     return stream
   }
 
-  _spawnClaude(userMessage) {
-    // return spawn(CLAUDE_PATH, ['-p', userMessage], { cwd: this.cwd })
-    // const process = spawn(CLAUDE_PATH, ['-p', userMessage], { cwd: this.cwd })
-    const process = spawn(CLAUDE_PATH, ['-p', userMessage], { shell:true, cwd: this.cwd })
-    process.stdout.on('data', (data) => print(data))
-    process.stderr.on('data', (data) => print(data))
-    process.on('close', (code) => print(`child process exited with code ${code}`))
-    return process
+  _queryOptions() {
+    const gitBash = process.env.CLAUDE_CODE_GIT_BASH_PATH
+      || (process.env.EXEPATH && `${process.env.EXEPATH}/bash.exe`)
+      || 'C:/Program Files/Git/bin/bash.exe'
+    const options = {
+      cwd: this.cwd,
+      permissionMode: 'dontAsk',
+      env: { ...process.env, CLAUDE_CODE_GIT_BASH_PATH: gitBash },
+    }
+    print('claude code git bash path', gitBash)
+    return options
   }
 
-  _codeChat(userMessage, source) {
+  async _codeChat(userMessage, source) {
     this.emit('userMessage', { text: userMessage, source })
 
-    return new Promise((resolve) => {
-      const proc = this._spawnClaude(userMessage)
-
-      let stdout = ''
-      let stderr = ''
-      proc.stdout.on('data', (chunk) => { stdout += chunk.toString() })
-      proc.stderr.on('data', (chunk) => { stderr += chunk.toString() })
-      proc.on('error', (err) => {
-        const text = `Error: ${err.message}`
-        this.emit('assistantMessage', { text, source })
-        resolve(text)
-      })
-      proc.on('close', (code) => {
-        const text = stdout.trim() || stderr.trim() || `(claude exited with code ${code})`
-        this.emit('assistantMessage', { text, source })
-        resolve(text)
-      })
-    })
+    try {
+      const q = claudeQuery({ prompt: userMessage, options: this._queryOptions() })
+      let resultText = ''
+      for await (const msg of q) {
+        if (msg.type === 'result' && msg.subtype === 'success') {
+          resultText = msg.result
+        }
+      }
+      const text = resultText || '(no response)'
+      this.emit('assistantMessage', { text, source })
+      return text
+    } catch (err) {
+      const text = `Error: ${err.message}`
+      this.emit('assistantMessage', { text, source })
+      return text
+    }
   }
 
   _codeChatStream(userMessage, source) {
     this.emit('userMessage', { text: userMessage, source })
 
-    const proc = this._spawnClaude(userMessage)
-
     const emitter = new EventEmitter()
     let fullText = ''
-    let stderr = ''
 
-    proc.stdout.on('data', (chunk) => {
-      const text = chunk.toString()
-      fullText += text
-      emitter.emit('text', text)
-    })
-
-    proc.stderr.on('data', (chunk) => { stderr += chunk.toString() })
-
-    proc.on('error', (err) => {
-      emitter.emit('text', `Error: ${err.message}`)
-    })
-
-    const done = new Promise((resolve) => {
-      proc.on('close', (code) => {
-        const text = fullText.trim() || stderr.trim() || `(claude exited with code ${code})`
-        this.emit('assistantMessage', { text, source })
-        resolve({ content: [{ text }] })
-      })
-    })
+    const done = (async () => {
+      try {
+        const q = claudeQuery({
+          prompt: userMessage,
+          options: { ...this._queryOptions(), includePartialMessages: true },
+        })
+        for await (const msg of q) {
+          if (msg.type === 'stream_event'
+            && msg.event.type === 'content_block_delta'
+            && msg.event.delta.type === 'text_delta') {
+            fullText += msg.event.delta.text
+            emitter.emit('text', msg.event.delta.text)
+          }
+          if (msg.type === 'result' && msg.subtype === 'success') {
+            fullText = msg.result
+          }
+        }
+      } catch (err) {
+        emitter.emit('text', `Error: ${err.message}`)
+      }
+      const text = fullText || '(no response)'
+      this.emit('assistantMessage', { text, source })
+      return { content: [{ text }] }
+    })()
 
     emitter.finalMessage = () => done
-
     return emitter
   }
 }
