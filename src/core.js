@@ -1,6 +1,7 @@
 
 globalThis.print = console.log
 import { EventEmitter } from 'node:events'
+import { spawn } from 'node:child_process'
 import Anthropic from '@anthropic-ai/sdk'
 import { query as claudeQuery } from '@anthropic-ai/claude-agent-sdk'
 
@@ -99,16 +100,23 @@ export default class Ava extends EventEmitter {
   }
 
   _queryOptions() {
-    const gitBash = process.env.CLAUDE_CODE_GIT_BASH_PATH
-      || (process.env.EXEPATH && `${process.env.EXEPATH}/bash.exe`)
-      || 'C:/Program Files/Git/bin/bash.exe'
-    const options = {
+    const env = { ...process.env }
+    delete env.CLAUDECODE
+    delete env.CLAUDE_CODE_SSE_PORT
+    delete env.CLAUDE_CODE_ENTRYPOINT
+    return {
       cwd: this.cwd,
       permissionMode: 'dontAsk',
-      env: { ...process.env, CLAUDE_CODE_GIT_BASH_PATH: gitBash },
+      env,
+      spawnClaudeCodeProcess: (opts) => {
+        return spawn(opts.command, opts.args, {
+          cwd: opts.cwd,
+          env: opts.env,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          signal: opts.signal,
+        })
+      },
     }
-    print('claude code git bash path', gitBash)
-    return options
   }
 
   async _codeChat(userMessage, source) {
